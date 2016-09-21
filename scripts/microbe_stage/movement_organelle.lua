@@ -29,7 +29,7 @@ function MovementOrganelle:__init(force, torque)
     self.movingTail = false
 end
 
-function MovementOrganelle:onAddedToMicrobe(microbe, q, r, rotation)  
+function MovementOrganelle:onAddedToMicrobe(microbe, q, r, rotation)
     Organelle.onAddedToMicrobe(self, microbe, q, r, rotation)
 end
 
@@ -48,36 +48,36 @@ function MovementOrganelle:storage()
     return storage
 end
 
+function MovementOrganelle:movementOff()
+    self.movingTail = false
+    self.sceneNode:setAnimationSpeed(0.25)
+end
+
 function MovementOrganelle:_moveMicrobe(microbe, milliseconds)
     local direction = microbe.microbe.movementDirection
-    local forceMagnitude = self.force:dotProduct(direction)
+
+    if direction:isZeroLength() or self.force:isZeroLength()  then
+        self:movementOff()
+        return
+    end
+
+    local seconds = milliseconds / 1000
+    local forceMagnitude = self.force:dotProduct(direction) * seconds
     if forceMagnitude > 0 then
-        if direction:isZeroLength() or self.force:isZeroLength()  then
-            self.movingTail = false
-            self.sceneNode:setAnimationSpeed(0.25)
-            return
-        end 
         self.movingTail = true
         self.sceneNode:setAnimationSpeed(1.3)
-        
-        local energy = math.abs(self.energyMultiplier * forceMagnitude * milliseconds / 1000)
+
+        local energy = math.abs(self.energyMultiplier * forceMagnitude)
         local availableEnergy = microbe:takeCompound(CompoundRegistry.getCompoundId("atp"), energy)
         if availableEnergy < energy then
-            forceMagnitude = sign(forceMagnitude) * availableEnergy * 1000 / milliseconds / self.energyMultiplier
-            self.movingTail = false
-            self.sceneNode:setAnimationSpeed(0.25)
+            forceMagnitude = sign(forceMagnitude) * availableEnergy / self.energyMultiplier
+            self:movementOff()
         end
-        local impulseMagnitude = microbe.microbe.movementFactor * milliseconds * forceMagnitude / 1000
+        local impulseMagnitude = microbe.microbe.movementFactor * forceMagnitude
         local impulse = impulseMagnitude * direction
-        local a = microbe.sceneNode.transform.orientation * impulse
-        microbe.rigidBody:applyCentralImpulse(
-            microbe.sceneNode.transform.orientation * impulse
-        )
-    else 
-        if self.movingTail then
-            self.movingTail = false
-            self.sceneNode:setAnimationSpeed(0.25)
-        end
+        microbe.rigidBody:applyCentralImpulse(microbe.sceneNode.transform.orientation * impulse)
+    elseif self.movingTail then
+        self:movementOff()
     end
 end
 

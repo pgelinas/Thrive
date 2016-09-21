@@ -49,7 +49,7 @@ function Organelle:addHex(q, r)
     }
     local x, y = axialToCartesian(q, r)
     local translation = Vector3(x, y, 0)
-    
+
     -- Collision shape
     self.collisionShape:addChildShape(
         translation,
@@ -101,17 +101,17 @@ function Organelle:onAddedToMicrobe(microbe, q, r, rotation)
     self.position.q = q
     self.position.r = r
     self.rotation = rotation
-	
+
 	local offset = Vector3(0,0,0)
 	local count = 0
 	for _, hex in pairs(self.microbe:getOrganelleAt(q, r)._hexes) do
 		count = count + 1
-		
+
 		local x, y = axialToCartesian(hex.q, hex.r)
 		offset = offset + Vector3(x,y,0)
 	end
 	offset = offset/count
-    
+
     -- Will cause the color of the organelle to update.
     self.flashDuration = 0
     if microbe:getSpeciesComponent() ~= nil then
@@ -120,12 +120,12 @@ function Organelle:onAddedToMicrobe(microbe, q, r, rotation)
     else
         self.colour = ColourValue(1, 1, 1, 1)
     end
-	
+
 	self.organelleEntity = Entity()
     local sceneNode = OgreSceneNodeComponent()
     self.sceneNode = sceneNode
     sceneNode.parent = self.entity
-    
+
     if self.name ~= "cytoplasm" then
         sceneNode.meshName = self.name .. ".mesh"
     end
@@ -235,12 +235,12 @@ end
 -- @param logicTime
 --  The time since the last call to update()
 function Organelle:update(microbe, logicTime)
-	if self.flashDuration ~= nil and self.sceneNode.entity ~= nil 
+	if self.flashDuration ~= nil and self.sceneNode.entity ~= nil
         and (self.name == "mitochondrion" or self.name == "nucleus" or self.name == "ER" or self.name == "golgi") then
-        
+
         self.flashDuration = self.flashDuration - logicTime
         local speciesColour = microbe:getSpeciesComponent().colour
-		
+
 		local entity = self.sceneNode.entity
 		-- How frequent it flashes, would be nice to update the flash function to have this variable
 		if math.fmod(self.flashDuration,600) < 300 then
@@ -248,7 +248,7 @@ function Organelle:update(microbe, logicTime)
 		else
 			entity:setMaterial(self.name .. math.floor(speciesColour.x * 256) .. math.floor(speciesColour.y * 256) .. math.floor(speciesColour.z * 256))
 		end
-		
+
         if self.flashDuration <= 0 then
             self.flashDuration = nil
 			entity:setMaterial(self.name .. math.floor(speciesColour.x * 256) .. math.floor(speciesColour.y * 256) .. math.floor(speciesColour.z * 256))
@@ -273,14 +273,11 @@ function OrganelleFactory.makeOrganelle(data)
     local make_organelle = function()
         return OrganelleFactory["make_"..data.name](data)
     end
-    local success, organelle = pcall(make_organelle)
-    if success then
-        organelle.name = data.name
-        return organelle
-    else
-        if data.name == "" or data.name == nil then data.name = "<nameless>" end
-        assert(false, "no organelle by name "..data.name)
-    end
+
+    local organelle = make_organelle()
+
+    organelle.name = data.name
+    return organelle
 end
 
 -- Draws the hexes and uploads the models in the editor

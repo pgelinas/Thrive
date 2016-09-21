@@ -6,17 +6,28 @@ function MicrobeEditorHudSystem:__init()
     self.organelleButtons = {}
     self.initialized = false
     self.editor = MicrobeEditor(self)
-    
+
     -- Scene nodes for the organelle cursors for symmetry.
     self.hoverHex = {}
     self.hoverOrganelle = {}
-    
-    self.saveLoadPanel = nil    
+
+    self.saveLoadPanel = nil
     self.creationsListbox = nil
     self.creationFileMap = {} -- Map from player creation name to filepath
     self.activeButton = nil -- stores button, not name
     self.helpPanelOpen = true
     self.organelleScrollPane = nil
+
+
+    -- Some constants
+    self.organelleDefinition = {
+        flagellum = { buttonName = "AddFlagellum", keymap = kmp.flagellum},
+        cytoplasm = { buttonName = "AddCytoplasm"},
+        mitochondrion = { buttonName = "AddMitochondria", keymap = kmp.mitochondrion},
+        vacuole = { buttonName = "AddVacuole", keymap = kmp.vacuole},
+        toxin = { buttonName = "AddToxinVacuole", keymap = kmp.oxytoxyvacuole, lock = "Toxin"},
+        chloroplast = { buttonName = "AddChloroplast", keymap = kmp.chloroplast, lock = "Chloroplast"}
+    }
 end
 
 
@@ -24,58 +35,31 @@ function MicrobeEditorHudSystem:init(gameState)
     System.init(self, "MicrobeEditorHudSystem", gameState)
     self.editor:init(gameState)
 
-    -- This seems really cluttered, there must be a better way.
-    for i=1, 42 do
-        self.hoverHex[i] = Entity("hover-hex" .. i)
-        local sceneNode = OgreSceneNodeComponent()
-        sceneNode.transform.position = Vector3(0,0,0)
-        sceneNode.transform:touch()
-        sceneNode.meshName = "hex.mesh"
-        self.hoverHex[i]:addComponent(sceneNode)
-    end
-    for i=1, 6 do
-        self.hoverOrganelle[i] = Entity("hover-organelle" .. i)    
-        local sceneNode = OgreSceneNodeComponent()
-        sceneNode.transform.position = Vector3(0,0,0)
-        sceneNode.transform:touch()
-        self.hoverOrganelle[i]:addComponent(sceneNode)
-    end
-    
+    self:createHoverEntities()
 
     local root = gameState:rootGUIWindow()
     self.mpLabel = root:getChild("MpPanel"):getChild("MpLabel")
     self.nameLabel = root:getChild("SpeciesNamePanel"):getChild("SpeciesNameLabel")
     self.nameTextbox = root:getChild("SpeciesNamePanel"):getChild("NameTextbox")
-    root:getChild("SpeciesNamePanel"):registerEventHandler("Clicked", 
+    root:getChild("SpeciesNamePanel"):registerEventHandler("Clicked",
         function() global_activeMicrobeEditorHudSystem:nameClicked() end)
     -- self.mpProgressBar = root:getChild("BottomSection"):getChild("MutationPoints"):getChild("MPBar")
     self.organelleScrollPane = root:getChild("scrollablepane");
-    
+
+    -- nucleus is a special organelle.
     local nucleusButton = root:getChild("NewMicrobe")
-    local flagellumButton = root:getChild("scrollablepane"):getChild("AddFlagellum")
-    local cytoplasmButton = root:getChild("scrollablepane"):getChild("AddCytoplasm")
-    local mitochondriaButton = root:getChild("scrollablepane"):getChild("AddMitochondria")
-    local vacuoleButton = root:getChild("scrollablepane"):getChild("AddVacuole")
-    local toxinButton = root:getChild("scrollablepane"):getChild("AddToxinVacuole")
-    local chloroplastButton = root:getChild("scrollablepane"):getChild("AddChloroplast")
-    
-    self.organelleButtons["nucleus"] = nucleusButton
-    self.organelleButtons["flagellum"] = flagellumButton
-    self.organelleButtons["cytoplasm"] = cytoplasmButton
-    self.organelleButtons["mitochondrion"] = mitochondriaButton
-    self.organelleButtons["chloroplast"] = chloroplastButton
-    self.organelleButtons["vacuole"] = vacuoleButton
-    self.organelleButtons["Toxin"] = toxinButton
-    self.activeButton = nil
-    
+    self.organelleButtons.nucleus = nucleusButton
     nucleusButton:registerEventHandler("Clicked", function() self:nucleusClicked() end)
-    flagellumButton:registerEventHandler("Clicked", function() self:flagellumClicked() end)
-    cytoplasmButton:registerEventHandler("Clicked", function() self:cytoplasmClicked() end)
-    mitochondriaButton:registerEventHandler("Clicked", function() self:mitochondriaClicked() end)
-    chloroplastButton:registerEventHandler("Clicked", function() self:chloroplastClicked() end)
-    vacuoleButton:registerEventHandler("Clicked", function() self:vacuoleClicked() end)
-    toxinButton:registerEventHandler("Clicked", function() self:toxinClicked() end)
-    
+
+    -- Create organelle buttons
+    for organelleName, definition in pairs(self.organelleDefinition) do
+        local organelleButton = root:getChild("scrollablepane"):getChild(definition.buttonName)
+        self.organelleButtons[organelleName] = organelleButton
+        organelleButton:registerEventHandler("Clicked", function() self:organelleClicked(organelleName) end)
+    end
+
+    self.activeButton = nil
+
     -- self.saveLoadPanel = root:getChild("SaveLoadPanel")
     -- self.creationsListbox = self.saveLoadPanel:getChild("SavedCreations")
     self.undoButton = root:getChild("UndoButton")
@@ -95,7 +79,7 @@ function MicrobeEditorHudSystem:init(gameState)
     self.helpPanel = root:getChild("HelpPanel")
     root:getChild("HelpButton"):registerEventHandler("Clicked", function() self:helpButtonClicked() end)
     self.helpPanel:registerEventHandler("Clicked", function() self:helpButtonClicked() end)
-    
+
     -- Set species name and cut it off if it is too long.
     local name = self.nameLabel:getText()
     if string.len(name) > 18 then
@@ -105,18 +89,40 @@ function MicrobeEditorHudSystem:init(gameState)
     self.nameLabel:setText(name)
 end
 
+function MicrobeEditorHudSystem:createHoverEntities()
+    function createEntity(name, index)
+        local entity = Entity(name .. index)
+        local sceneNode = OgreSceneNodeComponent()
+        sceneNode.transform.position = Vector3(0,0,0)
+        sceneNode.transform:touch()
+        if name == "hover-hex" then
+            sceneNode.meshName = "hex.mesh"
+        end
+        entity:addComponent(sceneNode)
+        return entity;
+    end
+
+    -- There has to be some reason behind those magic numbers? 42 and 6?
+    for i=1, 42 do
+        self.hoverHex[i] = createEntity("hover-hex", i)
+    end
+    for i=1, 6 do
+        self.hoverOrganelle[i] = createEntity("hover-organelle", i)
+    end
+end
 
 function MicrobeEditorHudSystem:activate()
     global_activeMicrobeEditorHudSystem = self -- Global reference for event handlers
     self.editor:activate()
-    for typeName,button in pairs(global_activeMicrobeEditorHudSystem.organelleButtons) do
-        print(typeName)
-        if Engine:playerData():lockedMap():isLocked(typeName) then
+    for organelleName, definition in pairs(self.organelleDefinition) do
+        print(organelleName)
+        local button = self.organelleButtons[organelleName]
+        if definition.lock and Engine:playerData():lockedMap():isLocked(definition.lock) then
             button:disable()
         else
             button:enable()
         end
-    end    
+    end
 end
 
 function MicrobeEditorHudSystem:setActiveAction(actionName)
@@ -127,22 +133,20 @@ function MicrobeEditorHudSystem:setActiveAction(actionName)
     end
 end
 
-
 function MicrobeEditorHudSystem:update(renderTime, logicTime)
-    for i=1, 42 do
-        local sceneNode = self.hoverHex[i]:getComponent(OgreSceneNodeComponent.TYPE_ID)
-        sceneNode.transform.position = Vector3(0,0,0)
-        sceneNode.transform.scale = Vector3(0,0,0)
-        sceneNode.transform:touch()
+    function update (table)
+        for i,element in ipairs(table) do
+            local sceneNode = element:getComponent(OgreSceneNodeComponent.TYPE_ID)
+            sceneNode.transform.position = Vector3(0,0,0)
+            sceneNode.transform.scale = Vector3(0,0,0)
+            sceneNode.transform:touch()
+        end
     end
-    for i=1, 6 do
-        local sceneNode = self.hoverOrganelle[i]:getComponent(OgreSceneNodeComponent.TYPE_ID)
-        sceneNode.transform.position = Vector3(0,0,0)
-        sceneNode.transform.scale = Vector3(0,0,0)
-        sceneNode.transform:touch()
-    end
+    update(self.hoverHex)
+    update(self.hoverOrganelle)
+
     self.editor:update(renderTime, logicTime)
-	
+
     -- Handle input
     if Engine.mouse:wasButtonPressed(Mouse.MB_Left) then
         self.editor:performLocationAction()
@@ -150,7 +154,16 @@ function MicrobeEditorHudSystem:update(renderTime, logicTime)
     if Engine.mouse:wasButtonPressed(Mouse.MB_Right) then
         self:removeClicked()
         self.editor:performLocationAction()
-    end	            
+    end
+
+    for organelleName, definition in pairs(self.organelleDefinition) do
+        if definition.keymap and keyCombo(definition.keymap) and not Engine:playerData():lockedMap():isLocked(definition.lock) then
+            self:organelleClicked(organelleName)
+            self.editor:performLocationAction()
+            break
+        end
+    end
+
     if keyCombo(kmp.newmicrobe) then
         -- These global event handlers are defined in microbe_editor_hud.lua
         self:nucleusClicked()
@@ -161,54 +174,26 @@ function MicrobeEditorHudSystem:update(renderTime, logicTime)
         self.editor:performLocationAction()
     elseif keyCombo(kmp.undo) then
         self.editor:undo()
-    elseif keyCombo(kmp.vacuole) then
-        self:vacuoleClicked()
-        self.editor:performLocationAction()
-    elseif keyCombo(kmp.oxytoxyvacuole) then
-        if not Engine:playerData():lockedMap():isLocked("Toxin") then
-            self:toxinClicked()
-            self.editor:performLocationAction()
-        end
-    elseif keyCombo(kmp.flagellum) then
-        self:flagellumClicked()
-        self.editor:performLocationAction()
-    elseif keyCombo(kmp.mitochondrion) then
-        self:mitochondriaClicked()  
-        self.editor:performLocationAction()
-    --elseif Engine.keyboard:wasKeyPressed(Keyboard.KC_A) and self.editor.currentMicrobe ~= nil then
-    --    self:aminoSynthesizerClicked()
-    --    self.editor:performLocationAction()
-    elseif keyCombo(kmp.chloroplast) then
-        if not Engine:playerData():lockedMap():isLocked("Chloroplast") then
-            self:chloroplastClicked()
-            self.editor:performLocationAction()
-        end
     elseif keyCombo(kmp.togglegrid) then
-        if self.editor.gridVisible then
-            self.editor.gridSceneNode.visible = false;
-            self.editor.gridVisible = false
-        else
-            self.editor.gridSceneNode.visible = true;
-            self.editor.gridVisible = true
-        end
+        self.editor.gridSceneNode.visible = not self.editor.gridVisible
+        self.editor.gridVisible = not self.editor.gridVisible
     elseif keyCombo(kmp.gotostage) then
         playClicked()
     elseif keyCombo(kmp.rename) then
         self:updateMicrobeName()
     end
-    
+
     if Engine.keyboard:wasKeyPressed(Keyboard.KC_LEFT) or Engine.keyboard:wasKeyPressed(Keyboard.KC_A) then
 		self.editor.organelleRot = (self.editor.organelleRot + 60)%360
-	end
-	if Engine.keyboard:wasKeyPressed(Keyboard.KC_RIGHT) or Engine.keyboard:wasKeyPressed(Keyboard.KC_D) then
+	elseif Engine.keyboard:wasKeyPressed(Keyboard.KC_RIGHT) or Engine.keyboard:wasKeyPressed(Keyboard.KC_D) then
 		self.editor.organelleRot = (self.editor.organelleRot - 60)%360
 	end
-	
+
     if keyCombo(kmp.screenshot) then
         Engine:screenShot("screenshot.png")
     end
 
-    if Engine.keyboard:isKeyDown(Keyboard.KC_LSHIFT) then 
+    if Engine.keyboard:isKeyDown(Keyboard.KC_LSHIFT) then
         properties = Entity(CAMERA_NAME .. 3):getComponent(OgreCameraComponent.TYPE_ID).properties
         newFovY = properties.fovY + Degree(Engine.mouse:scrollChange()/10)
         if newFovY < Degree(10) then
@@ -226,35 +211,38 @@ function MicrobeEditorHudSystem:update(renderTime, logicTime)
             organelleScrollVal = 1.0
         end
         self.organelleScrollPane:scrollingpaneSetVerticalPosition(organelleScrollVal)
-        
+
     end
 end
 
-function MicrobeEditorHudSystem:updateMutationPoints() 
+function MicrobeEditorHudSystem:updateMutationPoints()
     --self.mpProgressBar:progressbarSetProgress(self.editor.mutationPoints/100)
     self.mpLabel:setText("" .. self.editor.mutationPoints)
 end
 
 -----------------------------------------------------------------
 -- Event handlers -----------------------------------------------
-
-function playClicked()
+function playButtonClickedSound()
     local guiSoundEntity = Entity("gui_sounds")
     guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
-    Engine:setCurrentGameState(GameState.MICROBE)
+end
+
+function gameStateButtonClicked(gameState)
+    playButtonClickedSound()
+    Engine:setCurrentGameState(gameState)
+end
+
+function playClicked()
+    gameStateButtonClicked(GameState.MICROBE)
 end
 
 function menuPlayClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
     Engine:currentGameState():rootGUIWindow():getChild("MenuPanel"):hide()
     playClicked()
 end
 
 function menuMainMenuClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
-    Engine:setCurrentGameState(GameState.MAIN_MENU)
+    gameStateButtonClicked(GameState.MAIN_MENU)
 end
 
 -- the rest of the event handlers are MicrobeEditorHudSystem methods
@@ -278,8 +266,7 @@ function MicrobeEditorHudSystem:updateMicrobeName()
 end
 
 function MicrobeEditorHudSystem:helpButtonClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
+    playButtonClickedSound()
     if self.helpPanelOpen then
         self.helpPanel:hide()
     else
@@ -295,69 +282,14 @@ function MicrobeEditorHudSystem:nucleusClicked()
     self:setActiveAction("nucleus")
 end
 
-function MicrobeEditorHudSystem:flagellumClicked()
+function MicrobeEditorHudSystem:organelleClicked(organelleName)
     if self.activeButton ~= nil then
         self.activeButton:enable()
     end
-    self.activeButton = self.organelleButtons["flagellum"]
+    self.activeButton = self.organelleButtons[organelleName]
     self.activeButton:disable()
-    self:setActiveAction("flagellum")
+    self:setActiveAction(organelleName)
 end
-
-function MicrobeEditorHudSystem:cytoplasmClicked()
-    if self.activeButton ~= nil then
-        self.activeButton:enable()
-    end
-    self.activeButton = self.organelleButtons["cytoplasm"]
-    self.activeButton:disable()
-    self:setActiveAction("cytoplasm")
-end
-
-function MicrobeEditorHudSystem:mitochondriaClicked()
-    if self.activeButton ~= nil then
-        self.activeButton:enable()
-    end
-    self.activeButton = self.organelleButtons["mitochondrion"]
-    self.activeButton:disable()
-    self:setActiveAction("mitochondrion")
-end
-
-function MicrobeEditorHudSystem:chloroplastClicked()
-    if self.activeButton ~= nil then
-        self.activeButton:enable()
-    end
-    self.activeButton = self.organelleButtons["chloroplast"]
-    self.activeButton:disable()
-    self:setActiveAction("chloroplast")
-end
-
-function MicrobeEditorHudSystem:aminoSynthesizerClicked()
-    if self.activeButton ~= nil then
-        self.activeButton:enable()
-    end
-    self.activeButton = self.organelleButtons["aminosynthesizer"]
-    self.activeButton:disable()
-    self:setActiveAction("aminosynthesizer")
-end
-
-function MicrobeEditorHudSystem:vacuoleClicked()
-    if self.activeButton ~= nil then
-        self.activeButton:enable()
-    end
-    self.activeButton = self.organelleButtons["vacuole"]
-    self.activeButton:disable()
-    self:setActiveAction("vacuole")
-end
-
-function MicrobeEditorHudSystem:toxinClicked()
-    if self.activeButton ~= nil then
-        self.activeButton:enable()
-    end
-    self.activeButton = self.organelleButtons["Toxin"]
-    self.activeButton:disable()
-    self:setActiveAction("oxytoxy")
-end
-
 
 function MicrobeEditorHudSystem:removeClicked()
     if self.activeButton ~= nil then
@@ -367,23 +299,8 @@ function MicrobeEditorHudSystem:removeClicked()
     self:setActiveAction("remove")
 end
 
-function MicrobeEditorHudSystem:rootSaveCreationClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
-    print ("Save button clicked")
-    --[[
-    panel = self.saveLoadPanel
-    panel:getChild("SaveButton"):show()
-    panel:getChild("NameTextbox"):show()
-    panel:getChild("CreationNameDialogLabel"):show()
-    panel:getChild("LoadButton"):hide()
-    panel:getChild("SavedCreations"):hide()
-    panel:show()--]]
-end
-
 function MicrobeEditorHudSystem:rootLoadCreationClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
+    playButtonClickedSound()
     panel = self.saveLoadPanel
     panel:getChild("SaveButton"):hide()
     panel:getChild("NameTextbox"):hide()
@@ -410,8 +327,7 @@ function MicrobeEditorHudSystem:rootLoadCreationClicked()
 end
 
 function MicrobeEditorHudSystem:saveCreationClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
+    playButtonClickedSound()
     name = self.editor.currentMicrobe.microbe.speciesName
     print("saving "..name)
     -- Todo: Additional input sanitation
@@ -424,10 +340,9 @@ function MicrobeEditorHudSystem:saveCreationClicked()
 end
 
 function MicrobeEditorHudSystem:loadCreationClicked()
-    local guiSoundEntity = Entity("gui_sounds")
-    guiSoundEntity:getComponent(SoundSourceComponent.TYPE_ID):playSound("button-hover-click")
+    playButtonClickedSound()
     item = self.creationsListbox:itemListboxGetLastSelectedItem()
-    if not item:isNull() then 
+    if not item:isNull() then
         entity = Engine:loadCreation(self.creationFileMap[item:getText()])
         self.editor:loadMicrobe(entity)
         panel:hide()
@@ -437,9 +352,9 @@ end
 -- useful debug functions
 
 function MicrobeEditorHudSystem:loadByName(name)
-    if string.find(name, ".microbe") then 
-        print("note, you don't need to add the .microbe extension") 
-    else 
+    if string.find(name, ".microbe") then
+        print("note, you don't need to add the .microbe extension")
+    else
         name = name..".microbe"
     end
     name, _ = string.gsub(name, "%s+", "_")
@@ -461,24 +376,11 @@ end
 
 function MicrobeEditorHudSystem:changeSymmetry()
     self.editor.symmetry = (self.editor.symmetry+1)%4
-    
-    if self.editor.symmetry == 0 then
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryNoneNormal", "Image")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryNoneHover", "PushedImage")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryNoneHover", "HoverImage")
-    elseif self.editor.symmetry == 1 then
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryTwoNormal", "Image")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryTwoHover", "PushedImage")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryTwoHover", "HoverImage")
-    elseif self.editor.symmetry == 2 then
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryFourNormal", "Image")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryFourHover", "PushedImage")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetryFourHover", "HoverImage")
-    elseif self.editor.symmetry == 3 then
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetrySixNormal", "Image")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetrySixHover", "PushedImage")
-        self.symmetryButton:setProperty("ThriveGeneric/SymmetrySixHover", "HoverImage")
-    end
+    local symmetryMap = {"None", "Two", "Four", "Six"}
+    local symmetry = symmetryMap[self.editor.symmetry]
+    self.symmetryButton:setProperty("ThriveGeneric/Symmetry" + symmetry + "Normal", "Image")
+    self.symmetryButton:setProperty("ThriveGeneric/Symmetry" + symmetry + "Hover", "PushedImage")
+    self.symmetryButton:setProperty("ThriveGeneric/Symmetry" + symmetry + "Hover", "HoverImage")
 end
 
 function saveMicrobe() global_activeMicrobeEditorHudSystem:saveCreationClicked() end
