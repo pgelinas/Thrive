@@ -22,6 +22,7 @@ function MicrobeEditorHudSystem:__init()
     -- Some constants
     self.organelleDefinition = {
         flagellum = { buttonName = "AddFlagellum", keymap = kmp.flagellum},
+        cilia = { buttonName = "AddCilia"},
         cytoplasm = { buttonName = "AddCytoplasm"},
         mitochondrion = { buttonName = "AddMitochondria", keymap = kmp.mitochondrion},
         vacuole = { buttonName = "AddVacuole", keymap = kmp.vacuole},
