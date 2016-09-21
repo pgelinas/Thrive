@@ -1,7 +1,14 @@
 -- Enables a microbe to move and turn
 class 'MovementOrganelle' (Organelle)
 
-FLAGELLUM_MOMENTUM = 12.5 -- what the heck is this for?
+-- TODO make this externally configurable for easier balancing
+MovementOrganelle.config = {
+    flagellum = {force=10, torque=200, mpCost=25},
+    cilia = {force=2,torque=1000, mpCost=10}
+}
+
+Organelle.mpCosts.flagellum = MovementOrganelle.config.flagellum.mpCost
+Organelle.mpCosts.cilia =  MovementOrganelle.config.cilia.mpCost
 
 -- Constructor
 --
@@ -108,24 +115,25 @@ function MovementOrganelle:update(microbe, logicTime)
     self:_moveMicrobe(microbe, logicTime)
 end
 
-Organelle.mpCosts["flagellum"] = 25
-
--- factory functions
-function OrganelleFactory.make_flagellum(data)
-    -- Calculate the momentum of the movement organelle based on angle towards nucleus
-    local organelleX, organelleY = axialToCartesian(data.q, data.r)
+-- Calculate the momentum of the movement organelle based on angle towards nucleus
+function makeOrganelle(organelleData, config)
+    local organelleX, organelleY = axialToCartesian(organelleData.q, organelleData.r)
     local nucleusX, nucleusY = axialToCartesian(0, 0)
     local deltaX = nucleusX - organelleX
     local deltaY = nucleusY - organelleY
     local dist = math.sqrt(deltaX^2 + deltaY^2) -- For normalizing vector
-    local momentumX = deltaX / dist * FLAGELLUM_MOMENTUM
-    local momentumY = deltaY / dist * FLAGELLUM_MOMENTUM
-    local flagellum = MovementOrganelle(
-        Vector3(momentumX, momentumY, 0.0),
-        300
-    )
+    local momentumX = deltaX / dist * config.force
+    local momentumY = deltaY / dist * config.force
+    local momentum = Vector3(momentumX, momentumY, 0.0)
+
+    local flagellum = MovementOrganelle(momentum, config.torque)
     flagellum:addHex(0, 0)
     return flagellum
+end
+
+-- factory functions
+function OrganelleFactory.make_flagellum(data)
+    return makeOrganelle(data, MovementOrganelle.config.flagellum)
 end
 
 function OrganelleFactory.render_flagellum(data)
@@ -134,13 +142,22 @@ function OrganelleFactory.render_flagellum(data)
 	data.sceneNode[1].meshName = "flagellum.mesh"
 	data.sceneNode[1].transform.position = translation
 	data.sceneNode[1].transform.orientation = Quaternion(Radian(Degree(-90)), Vector3(0, 0, 1))
-	
+
 	data.sceneNode[2].transform.position = translation
 	OrganelleFactory.setColour(data.sceneNode[2], data.colour)
 end
 
 function OrganelleFactory.sizeof_flagellum(data)
-    local hexes = {}
-	hexes[1] = {["q"]=0, ["r"]=0}
-	return hexes
+	return {{q=0, r=0}}
 end
+
+function OrganelleFactory.make_cilia(data)
+    return makeOrganelle(data, MovementOrganelle.config.cilia)
+end
+
+function OrganelleFactory.render_cilia(data)
+    OrganelleFactory.render_flagellum(data)
+    data.sceneNode[1].transform.scale = Vector3(0.5, 0.5, 0.5)
+end
+
+OrganelleFactory.sizeof_cilia = OrganelleFactory.sizeof_flagellum

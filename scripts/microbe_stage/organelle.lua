@@ -132,7 +132,7 @@ function Organelle:onAddedToMicrobe(microbe, q, r, rotation)
 	if self.name == "nucleus"  then
 		offset = Vector3(0,0,0)
 		-- TODO: Add specific nucleus animation here.
-	elseif self.name == "flagellum" then -- Add all movement organelles here.
+	elseif self.name == "flagellum" or self.name == "cilia" then -- Add all movement organelles here.
 		sceneNode:playAnimation("Move", true)
 		sceneNode:setAnimationSpeed(0.25)
 		local organelleX, organelleY = axialToCartesian(q, r)
